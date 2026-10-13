@@ -166,6 +166,75 @@ class Leads(unittest.TestCase):
         self.assertEqual(store.import_csv(out), (0, 1, 0))
 
 
+class BusinessTypes(unittest.TestCase):
+    def setUp(self):
+        reset()
+
+    def test_type_from_google_category_and_kept_when_you_change_it(self):
+        church, _, _ = store.store_lead({'name': 'Grace Fellowship', 'category': 'Baptist church', 'phone': '217-555-0001'})
+        gc, _, _ = store.store_lead({'name': 'BAKO General Construction', 'category': 'General contractor'})
+        self.assertEqual(store.get_lead(church)['industry'], 'Church & Religious')
+        self.assertEqual(store.get_lead(gc)['industry'], 'Construction & Remodeling')
+        store.update_lead(gc, {'industry': 'Roofing'})
+        store.store_lead({'name': 'BAKO General Construction', 'category': 'General contractor'})  # recapture
+        self.assertEqual(store.get_lead(gc)['industry'], 'Roofing')
+
+    def test_hand_typed_lead_gets_a_type_once_named(self):
+        lead, _, _ = store.store_lead({'name': 'New business 10:22', 'source': 'Manual'})
+        self.assertEqual(store.get_lead(lead)['industry'], 'Other')
+        store.update_lead(lead, {'name': 'Hope Community Church'}, log=False)
+        self.assertEqual(store.get_lead(lead)['industry'], 'Church & Religious')
+
+    def test_filters_and_counts(self):
+        a, _, _ = store.store_lead({'name': 'First Baptist', 'category': 'Baptist church', 'phone': '217-555-0001', 'address': '1 Main St, Springfield, IL 62701'})
+        b, _, _ = store.store_lead({'name': 'St. Mary', 'category': 'Catholic church', 'phone': '217-555-0002', 'address': '2 Oak St, Chatham, IL 62629'})
+        c, _, _ = store.store_lead({'name': 'Ace Plumbing', 'category': 'Plumber', 'phone': '217-555-0003', 'address': '3 Elm St, Springfield, IL 62702'})
+        store.update_lead(b, {'status': 'Contacted'})
+        ids = lambda **f: sorted(r['id'] for r in store.query_leads(**f))
+        self.assertEqual(ids(industry='Church & Religious'), sorted([a, b]))
+        self.assertEqual(ids(industry='Church & Religious', city='Springfield, IL'), [a])
+        self.assertEqual(ids(industry='Church & Religious', stage='New'), [a])
+        f = store.facet_counts(industry='Church & Religious')
+        self.assertEqual(dict(f['industries']), {'Church & Religious': 2, 'Plumbing': 1})  # other types still listed
+        self.assertEqual(dict(f['stages'])['Contacted'], 1)
+        self.assertEqual(dict(f['cities']), {'Springfield, IL': 1, 'Chatham, IL': 1})
+        self.assertEqual(f['views']['All leads'], 2)
+
+    def test_last_note_in_list(self):
+        a, _, _ = store.store_lead({'name': 'First Baptist', 'category': 'Church'})
+        store.add_activity(a, 'Call', 'No answer')
+        store.add_activity(a, 'Note', 'Pastor Tim handles the website')
+        self.assertEqual(store.query_leads()[0]['last_note'], 'Note: Pastor Tim handles the website')
+
+
+class CallOutcomes(unittest.TestCase):
+    def setUp(self):
+        reset()
+
+    def test_outcome_plan(self):
+        self.assertEqual(store.outcome_plan('No answer', 'New'), ('Call', None, store.quick_date(2)))
+        self.assertEqual(store.outcome_plan('Interested', 'New'), ('Call', 'Follow Up', store.quick_date(1)))
+        self.assertEqual(store.outcome_plan('Interested', 'Proposal'), ('Call', None, store.quick_date(1)))  # never backwards
+        self.assertEqual(store.outcome_plan('Not interested', 'Proposal'), ('Call', 'Lost', ''))
+
+    def test_one_step_log_changes_stage_once(self):
+        lead, _, _ = store.store_lead({'name': 'First Baptist', 'category': 'Church'})
+        kind, stage, follow = store.outcome_plan('Interested', 'New')
+        extra = store.add_activity(lead, kind, 'Interested — Pastor wants a quote', status=stage, next_followup=follow)
+        r = store.get_lead(lead)
+        self.assertEqual((r['status'], r['next_followup'], r['last_contacted']), ('Follow Up', store.quick_date(1), store.today()))
+        self.assertEqual(extra['status'], 'Follow Up')
+        stages = [a['detail'] for a in store.list_activities(lead) if a['action'] == 'Stage']
+        self.assertEqual(stages, ['New → Follow Up'])  # not New → Contacted → Follow Up
+
+    def test_edit_note(self):
+        lead, _, _ = store.store_lead({'name': 'X'})
+        store.add_activity(lead, 'Note', 'typo')
+        note = store.list_activities(lead)[0]
+        store.update_activity(note['id'], 'fixed')
+        self.assertEqual(store.list_activities(lead)[0]['detail'], 'fixed')
+
+
 class Migration(unittest.TestCase):
     def test_upgrades_a_2_0_database_in_place(self):
         for suffix in ('', '-wal', '-shm'):
@@ -190,6 +259,7 @@ class Migration(unittest.TestCase):
         store.init_db()
         r = store.query_leads()[0]
         self.assertEqual((r['status'], r['notes'], r['place_id'], r['city']), ('Contacted', 'old note', 'cid:18312289726122526342', 'Springfield'))
+        self.assertEqual(r['industry'], 'Plumbing')  # guessed from the name since 2.0 rows may lack a category
         # A fresh capture of the same business now updates the old record instead of duplicating it.
         lead_id, result, _ = store.store_lead(CAPTURE)
         self.assertEqual((lead_id, result), (r['id'], 'updated'))

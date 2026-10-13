@@ -12,7 +12,7 @@ APP_DIR = Path(os.environ.get('LEADDOCK_DATA_DIR') or Path(os.environ.get('LOCAL
 DB_PATH = APP_DIR / 'leads.sqlite3'
 KEY_PATH = APP_DIR / 'capture_key.txt'
 SETTINGS_PATH = APP_DIR / 'settings.json'
-VERSION = '2.6'
+VERSION = '2.7'
 
 STAGES = ['New', 'Qualified', 'Contacted', 'Follow Up', 'Proposal', 'Won', 'Lost']
 CLOSED_STAGES = ('Won', 'Lost')
@@ -22,7 +22,7 @@ OUTREACH_TYPES = ('Call', 'Email', 'Text', 'Visit', 'Meeting')
 
 # Column order is also the CSV export order. Everything is TEXT except the deal value.
 COLUMNS = {
-    'name': "TEXT NOT NULL DEFAULT ''", 'category': "TEXT DEFAULT ''", 'phone': "TEXT DEFAULT ''",
+    'name': "TEXT NOT NULL DEFAULT ''", 'category': "TEXT DEFAULT ''", 'industry': "TEXT DEFAULT ''", 'phone': "TEXT DEFAULT ''",
     'email': "TEXT DEFAULT ''", 'website': "TEXT DEFAULT ''", 'address': "TEXT DEFAULT ''",
     'city': "TEXT DEFAULT ''", 'state': "TEXT DEFAULT ''", 'postal_code': "TEXT DEFAULT ''",
     'contact_name': "TEXT DEFAULT ''", 'maps_url': "TEXT DEFAULT ''", 'place_id': "TEXT DEFAULT ''",
@@ -41,14 +41,14 @@ GOOGLE_FACTS = ('category', 'phone', 'website', 'address', 'city', 'state', 'pos
                 'rating', 'review_count', 'hours', 'business_status', 'claimed', 'price_level', 'plus_code',
                 'latitude', 'longitude')
 # Fields a capture/import only fills in when they are blank, so your own edits are never overwritten.
-FILL_IF_BLANK = ('name', 'email', 'contact_name', 'social_links', 'source', 'notes', 'estimated_value',
+FILL_IF_BLANK = ('name', 'industry', 'email', 'contact_name', 'social_links', 'source', 'notes', 'estimated_value',
                  'next_followup', 'last_contacted')
 MULTILINE = ('hours', 'social_links', 'website_audit', 'notes')
 # Changes worth calling out in the timeline when a recapture modifies them.
 NOTABLE = ('phone', 'website', 'address', 'category', 'business_status', 'rating', 'review_count')
 
 LABELS = {
-    'name': 'Business', 'category': 'Category', 'phone': 'Phone', 'email': 'Email', 'website': 'Website',
+    'name': 'Business', 'category': 'Google category', 'industry': 'Business type', 'phone': 'Phone', 'email': 'Email', 'website': 'Website',
     'address': 'Address', 'city': 'City', 'state': 'State', 'postal_code': 'ZIP', 'contact_name': 'Contact person',
     'maps_url': 'Google Maps URL', 'place_id': 'Google place ID', 'rating': 'Rating', 'review_count': 'Reviews',
     'hours': 'Hours', 'business_status': 'Business status', 'claimed': 'Profile claimed', 'price_level': 'Price level',
@@ -71,6 +71,71 @@ US_STATES = {
     'puerto rico': 'PR',
 }
 
+# Broad business types for filtering ("call my church leads"), derived from Google's very specific categories
+# ("Baptist church", "Roofing contractor"...). Checked in order, first match wins, so specific rules come first.
+INDUSTRY_RULES = [
+    ('Church & Religious', r'church|chapel|cathedral|parish|ministr|mosque|synagogue|temple|place of worship|worship|religious|'
+                           r'gospel|bible|tabernacle|congregation|diocese|monaster|convent|kingdom hall'),
+    ('Nonprofit & Community', r'food bank|food pantry|non-?profit|charity|homeless shelter'),
+    ('Dental', r'dent(ist|al)|orthodont|endodont|periodont|oral surgeon'),
+    ('Pets & Veterinary', r'veterinar|animal (hospital|clinic|shelter)|\bpets?\b|groomer|\bdogs?\b|kennel|\bcat (hospital|boarding)'),
+    ('Beauty & Wellness', r'salon|barber|\bspa\b|\bnails?\b|beauty|\bhair|cosmet|eyelash|\blash|\bbrow|waxing|massage|tattoo|piercing|'
+                          r'tanning|esthetic|aesthetic|makeup|wellness'),
+    ('Medical & Health', r'medical|doctor|physician|clinic|hospital|chiropract|physical therap|urgent care|optometr|ophthalm|eye care|'
+                         r'pharmac|counsel|therapist|psycholog|psychiatr|mental health|nursing|health|pediatric|dermatolog|surgeon|'
+                         r'podiatr|acupunct|rehab|hospice|laborator|imaging|audiolog|retirement|assisted living|senior living'),
+    ('Roofing', r'roof'),
+    ('Plumbing', r'plumb|drain|sewer|septic|water heater'),
+    ('HVAC', r'hvac|heating|air condition|furnace|\bac\b|cooling|ventilat|air duct|ductwork'),
+    ('Electrical & Solar', r'electric|solar|generator'),
+    ('Painting', r'paint(er|ing)'),
+    ('Landscaping & Lawn', r'landscap|lawn|tree (service|trimm|remov)|arborist|garden|irrigation|snow remov|plant nursery|\bsod\b'),
+    ('Cleaning', r'clean|janitor|maid|pressure wash|power wash|restoration|water damage|mold'),
+    ('Pest Control', r'pest|extermin|termite|wildlife (control|removal)|bed bug'),
+    ('Construction & Remodeling', r'contractor|construct|builder|remodel|renovat|carpent|concrete|mason|drywall|framing|excavat|'
+                                  r'paving|asphalt|\bdeck|fence|fencing contractor|handyman|handyperson|home improvement|cabinet|countertop|'
+                                  r'floor|\btil(e|ing)\b|siding|gutter|insulation|demolition|foundation|waterproof|stucco|weld|'
+                                  r'architect|engineer|survey'),
+    ('Home Services', r'locksmith|appliance|garage door|\bpools?\b|spa repair|moving|movers?\b|storage|security system|alarm|'
+                      r'home inspect|chimney|junk|dumpster|hauling|window|blinds|shutter|interior design|upholster|hot tub'),
+    ('Auto', r'\bauto|\bcar\b|\bcars\b|vehicle|mechanic|\btires?\b|collision|body shop|oil change|towing|tow truck|transmission|'
+             r'motorcycle|\brv\b|truck repair|smog|emission|detailing'),
+    ('Restaurants & Food', r'restaurant|caf[eé]|coffee|bakery|pizza|grill|diner|cater|food|deli\b|taco|sushi|burger|\bbar\b|\bpub\b|'
+                           r'brew|winery|tavern|bistro|ice cream|donut|doughnut|juice|tea house|steak|bbq|barbecue|kitchen'),
+    ('Legal', r'lawyer|attorney|law firm|legal|notary|bail bond'),
+    ('Finance & Insurance', r'accountant|accounting|\btax|\bcpa\b|bookkeep|insurance|financ|\bbank|credit union|mortgage|loan|'
+                            r'investment|wealth|payroll'),
+    ('Real Estate', r'real estate|realtor|property manag|apartment|condominium|housing|rental agency|title company|appraiser'),
+    ('Fitness & Recreation', r'\bgym|fitness|yoga|pilates|martial art|karate|taekwondo|jiu|boxing|crossfit|danc|golf|bowling|sports|'
+                             r'recreation|trampoline|swim|tennis|skating|climbing'),
+    ('Education & Childcare', r'school|academy|tutor|day ?care|child ?care|preschool|learning|college|universit|education|training|'
+                              r'lesson|montessori|kindergarten'),
+    ('Events & Hospitality', r'hotel|motel|\binn\b|bed & breakfast|lodging|resort|event|venue|wedding|banquet|photograph|videograph|'
+                             r'\bdj\b|party|entertain|limousine|travel'),
+    ('Government & Public', r'city hall|government|county|department of|police|fire station|post office|library|courthouse|\bdmv\b'),
+    ('Professional Services', r'marketing|advertis|consult|agency|printing|print shop|\bsigns?\b|graphic|web|design|software|'
+                              r'computer|technolog|staffing|employment|recruit|business|office|copy|courier|translation|answering'),
+    ('Nonprofit & Community', r'community|association|social serv|shelter|volunteer|\bclub\b|lodge|veterans|foundation'),
+    ('Manufacturing & Industrial', r'manufactur|machine shop|fabricat|wholesale|distribut|warehouse|supplier|industrial|factory|'
+                                   r'trucking|freight|logistic|recycl|metal|plastic|\bmill\b'),
+    ('Retail & Shops', r'store|shop|boutique|florist|jewel|gift|furniture|hardware|clothing|outlet|market|mall|liquor|thrift|pawn|vape'),
+]
+INDUSTRIES = list(dict.fromkeys(name for name, _ in INDUSTRY_RULES)) + ['Other']
+
+
+def industry_for(category, name=''):
+    """Broad business type for a Google category (falls back to the business name, e.g. "Grace Bible Church")."""
+    for text, from_name in ((category, False), ('' if category else name, True)):
+        text = (text or '').lower()
+        for industry, pattern in INDUSTRY_RULES if text else ():
+            # A name like "Smith Business Group" says little; only trust specific trades when guessing from names.
+            if from_name and industry == 'Professional Services':
+                continue
+            if re.search(pattern, text):
+                return industry
+    return 'Other'
+
+
 # CSV headers from other tools (Google Sheets exports, scrapers, LeadDock 1.0) mapped to LeadDock fields.
 CSV_ALIASES = {
     'business': 'name', 'business_name': 'name', 'company': 'name', 'company_name': 'name', 'title': 'name',
@@ -81,7 +146,7 @@ CSV_ALIASES = {
     'google_maps_url': 'maps_url', 'maps_link': 'maps_url', 'google_maps': 'maps_url', 'reviews': 'review_count',
     'reviews_count': 'review_count', 'stars': 'rating', 'contact': 'contact_name', 'contact_person': 'contact_name',
     'follow_up': 'next_followup', 'followup': 'next_followup', 'deal_value': 'estimated_value', 'value': 'estimated_value',
-    'type': 'category', 'industry': 'category', 'note': 'notes', 'socials': 'social_links',
+    'type': 'category', 'business_type': 'industry', 'sector': 'industry', 'note': 'notes', 'socials': 'social_links',
 }
 
 
@@ -150,6 +215,8 @@ def init_db():
             pid = place_id_from_url(r['maps_url'])
             if pid:
                 cx.execute('UPDATE leads SET place_id=? WHERE id=?', (pid, r['id']))
+        for r in cx.execute("SELECT id, category, name FROM leads WHERE industry='' OR industry IS NULL").fetchall():
+            cx.execute('UPDATE leads SET industry=? WHERE id=?', (industry_for(r['category'], r['name']), r['id']))
         for r in cx.execute("SELECT id, address FROM leads WHERE address!='' AND (city='' OR city IS NULL)").fetchall():
             parts = parse_address(r['address'])
             if parts.get('city'):
@@ -311,6 +378,7 @@ def normalize_business(data):
     if not out['city']:
         for k, v in parse_address(out['address'], out['plus_code']).items():
             out[k] = out[k] or v
+    out['industry'] = out['industry'] or industry_for(out['category'], out['name'])
     out['rating'] = parse_rating(out['rating'])
     out['review_count'] = parse_count(out['review_count'])
     out['email'] = re.sub(r'^mailto:', '', out['email'], flags=re.I).split('?')[0]
@@ -418,7 +486,7 @@ def store_lead(data, crm=None):
 
 def apply_crm(lead_id, crm):
     """Stage/priority/follow-up/note chosen in the browser extension popup."""
-    updates = {k: crm[k] for k in ('status', 'priority') if crm.get(k)}
+    updates = {k: crm[k] for k in ('status', 'priority', 'industry') if crm.get(k)}
     if crm.get('next_followup') is not None:
         updates['next_followup'] = crm['next_followup']
     if updates:
@@ -462,6 +530,10 @@ def update_lead(lead_id, changes, log=True):
         clean = {k: v for k, v in clean.items() if str(v) != str(row[k] if row[k] is not None else '')}
         if not clean:
             return {}
+        if ({'category', 'name'} & set(clean)) and 'industry' not in clean and (row['industry'] or 'Other') == 'Other':
+            guess = industry_for(clean.get('category', row['category']), clean.get('name', row['name']))
+            if guess != 'Other':  # a lead you typed in by hand gets its type once you give it a name/category
+                clean['industry'] = guess
         cx.execute('UPDATE leads SET ' + ','.join(f'{k}=?' for k in clean) + ',updated_at=? WHERE id=?', (*clean.values(), now(), lead_id))
         if log:
             if 'status' in clean:
@@ -474,28 +546,67 @@ def update_lead(lead_id, changes, log=True):
     return clean
 
 
-def add_activity(lead_id, action, detail=''):
-    """Log a note/call/email/etc. Logging outreach marks the lead as contacted (New/Qualified -> Contacted).
+def add_activity(lead_id, action, detail='', status=None, next_followup=None):
+    """Log a note/call/email/etc., optionally moving the stage and setting the follow-up in the same step.
 
-    Returns the extra changes made so the caller can tell the user about them.
+    Logging outreach records the contact date and, unless a stage is given, moves New/Qualified leads to Contacted.
+    Returns the lead fields that changed so the caller can tell the user about them.
     """
     action = action if action in ACTIVITY_TYPES else 'Note'
     detail = (detail or '').strip()
     if action == 'Note' and not detail:
         raise ValueError('Write a note first.')
+    if status and status not in STAGES:
+        raise ValueError(f'Unknown stage: {status}')
     extra = {}
     with db() as cx:
-        row = cx.execute('SELECT status, last_contacted FROM leads WHERE id=?', (lead_id,)).fetchone()
+        row = cx.execute('SELECT status, next_followup FROM leads WHERE id=?', (lead_id,)).fetchone()
         if not row:
             raise ValueError('That lead no longer exists.')
         _log(cx, lead_id, action, detail)
         if action in OUTREACH_TYPES:
             extra['last_contacted'] = today()
-            if row['status'] in ('New', 'Qualified', '', None):
-                extra['status'] = 'Contacted'
-                _log(cx, lead_id, 'Stage', f"{row['status'] or 'New'} → Contacted")
+            if not status and row['status'] in ('New', 'Qualified', '', None):
+                status = 'Contacted'
+        if status and status != row['status']:
+            extra['status'] = status
+            _log(cx, lead_id, 'Stage', f"{row['status'] or 'New'} → {status}")
+        if next_followup is not None and valid_date(next_followup) != (row['next_followup'] or ''):
+            extra['next_followup'] = valid_date(next_followup)
+            when = date.fromisoformat(extra['next_followup']).strftime('%a %b %d, %Y') if extra['next_followup'] else ''
+            _log(cx, lead_id, 'Follow-up', f'Set for {when}' if when else 'Cleared')
         cx.execute('UPDATE leads SET ' + ''.join(f'{k}=?,' for k in extra) + 'updated_at=? WHERE id=?', (*extra.values(), now(), lead_id))
     return extra
+
+
+# Call outcomes for one-click logging: label -> (activity type, stage to move to, follow-up in N days; '' clears it)
+CALL_OUTCOMES = {
+    'No answer': ('Call', None, 2),
+    'Left voicemail': ('Call', None, 3),
+    'Interested': ('Call', 'Follow Up', 1),
+    'Call back later': ('Call', 'Follow Up', 7),
+    'Sent proposal': ('Email', 'Proposal', 3),
+    'Not interested': ('Call', 'Lost', ''),
+    'Wrong number / closed': ('Call', 'Lost', ''),
+}
+
+
+def outcome_plan(outcome, current_status):
+    """(activity type, stage or None, follow-up date or '' or None) for a call outcome.
+
+    Stages only ever move forward automatically (a Proposal lead that says "call back later" stays a Proposal);
+    Lost is the exception.
+    """
+    kind, stage, days = CALL_OUTCOMES[outcome]
+    if stage and stage != 'Lost' and current_status in STAGES and STAGES.index(current_status) >= STAGES.index(stage):
+        stage = None
+    followup = '' if days == '' else quick_date(days) if days is not None else None
+    return kind, stage, followup
+
+
+def update_activity(activity_id, detail):
+    with db() as cx:
+        cx.execute('UPDATE activities SET detail=? WHERE id=?', ((detail or '').strip(), activity_id))
 
 
 def delete_activity(activity_id):
@@ -533,7 +644,7 @@ def lead_summary(lead_id, activity_limit=5):
     row = get_lead(lead_id)
     if not row:
         return None
-    out = {k: row[k] for k in ('id', 'name', 'status', 'priority', 'next_followup', 'last_contacted', 'notes',
+    out = {k: row[k] for k in ('id', 'name', 'industry', 'status', 'priority', 'next_followup', 'last_contacted', 'notes',
                                'email', 'website_issues', 'created_at', 'updated_at')}
     out['activity'] = [{'action': a['action'], 'detail': a['detail'], 'at': a['at']} for a in list_activities(lead_id, activity_limit)]
     return out
@@ -551,27 +662,70 @@ VIEW_SQL = {  # view name -> WHERE clause; ':today' is bound to today's date
     'Open deals': OPEN_SQL,
 }
 VIEWS = list(VIEW_SQL)
-SEARCH_COLUMNS = ['name', 'phone', 'email', 'website', 'city', 'state', 'address', 'category', 'contact_name', 'notes']
+SEARCH_COLUMNS = ['name', 'phone', 'email', 'website', 'city', 'state', 'address', 'category', 'industry', 'contact_name', 'notes']
+INDUSTRY_SQL = "COALESCE(NULLIF(industry,''),'Other')"
+CITY_SQL = "TRIM(COALESCE(city,'') || CASE WHEN COALESCE(state,'')!='' AND COALESCE(city,'')!='' THEN ', ' || state ELSE '' END)"
+# The latest note/call/email you logged, shown in the lead list.
+LAST_NOTE_SQL = """(SELECT a.action || ': ' || a.detail FROM activities a WHERE a.lead_id=leads.id
+                    AND a.action IN ('Note','Call','Email','Text','Visit','Meeting') ORDER BY a.at DESC, a.id DESC LIMIT 1)"""
 
 
-def query_leads(search='', stage='All stages', view='All leads'):
-    where, args = [VIEW_SQL.get(view, '1=1')], {'today': today()}
-    for i, term in enumerate(search.split()):
+def lead_filter(search='', stage='All stages', view='All leads', industry='', city='', skip=()):
+    """WHERE clause + args for the lead list. `skip` leaves out filters (used to count each facet's options)."""
+    where, args = [], {'today': today()}
+    if 'view' not in skip:
+        where.append(VIEW_SQL.get(view, '1=1'))
+    for i, term in enumerate((search or '').split()):
         where.append('(' + ' OR '.join(f'{c} LIKE :t{i}' for c in SEARCH_COLUMNS) + ')')
         args[f't{i}'] = '%' + term + '%'
-    if stage in STAGES:
+    if stage in STAGES and 'stage' not in skip:
         where.append('status=:stage')
         args['stage'] = stage
+    if industry and 'industry' not in skip:
+        where.append(f'{INDUSTRY_SQL}=:industry')
+        args['industry'] = industry
+    if city and 'city' not in skip:
+        where.append(f'{CITY_SQL}=:city')
+        args['city'] = city
+    return ' AND '.join(where) or '1=1', args
+
+
+def query_leads(search='', stage='All stages', view='All leads', industry='', city=''):
+    where, args = lead_filter(search, stage, view, industry, city)
     order = 'next_followup ASC, updated_at DESC' if view == 'Follow-ups due' else 'updated_at DESC'
     with db() as cx:
-        return cx.execute('SELECT * FROM leads WHERE ' + ' AND '.join(where) + ' ORDER BY ' + order, args).fetchall()
+        return cx.execute(f'SELECT leads.*, {LAST_NOTE_SQL} AS last_note FROM leads WHERE {where} ORDER BY {order}', args).fetchall()
+
+
+def facet_counts(search='', stage='All stages', view='All leads', industry='', city=''):
+    """How many leads each filter option would show, given the other active filters."""
+    f = dict(search=search, stage=stage, view=view, industry=industry, city=city)
+    out = {}
+    with db() as cx:
+        where, args = lead_filter(**f, skip=('view',))
+        cols = ', '.join(f'SUM(CASE WHEN {sql} THEN 1 ELSE 0 END)' for sql in VIEW_SQL.values())
+        row = cx.execute(f'SELECT {cols} FROM leads WHERE {where}', args).fetchone()
+        out['views'] = {name: row[i] or 0 for i, name in enumerate(VIEW_SQL)}
+        where, args = lead_filter(**f, skip=('industry',))
+        out['industries'] = [(r[0], r[1]) for r in cx.execute(
+            f'SELECT {INDUSTRY_SQL} k, COUNT(*) n FROM leads WHERE {where} GROUP BY k ORDER BY n DESC, k', args)]
+        where, args = lead_filter(**f, skip=('stage',))
+        counts = dict(cx.execute(f'SELECT status, COUNT(*) FROM leads WHERE {where} GROUP BY status', args).fetchall())
+        out['stages'] = [(s, counts.get(s, 0)) for s in STAGES]
+        where, args = lead_filter(**f, skip=('city',))
+        out['cities'] = [(r[0], r[1]) for r in cx.execute(
+            f'SELECT {CITY_SQL} k, COUNT(*) n FROM leads WHERE {where} GROUP BY k ORDER BY n DESC, k', args)]
+    return out
 
 
 def view_counts():
-    cols = ', '.join(f'SUM(CASE WHEN {sql} THEN 1 ELSE 0 END)' for sql in VIEW_SQL.values())
+    return facet_counts()['views']
+
+
+def industries_in_use():
     with db() as cx:
-        row = cx.execute(f'SELECT {cols} FROM leads', {'today': today()}).fetchone()
-    return {name: row[i] or 0 for i, name in enumerate(VIEW_SQL)}
+        used = [r[0] for r in cx.execute(f'SELECT DISTINCT {INDUSTRY_SQL} FROM leads')]
+    return INDUSTRIES[:-1] + sorted(set(used) - set(INDUSTRIES)) + ['Other']
 
 
 def pipeline_summary():

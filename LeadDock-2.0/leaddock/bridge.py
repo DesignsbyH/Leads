@@ -22,7 +22,7 @@ API = 4  # 4 = native helper + offline queue aware
 
 def health():
     return {'ok': True, 'app': 'LeadDock', 'version': store.VERSION, 'api': API,
-            'stages': store.STAGES, 'priorities': store.PRIORITIES, 'activity_types': store.ACTIVITY_TYPES}
+            'stages': store.STAGES, 'priorities': store.PRIORITIES, 'activity_types': store.ACTIVITY_TYPES, 'industries': store.INDUSTRIES}
 
 
 def business_of(body):
@@ -44,8 +44,10 @@ def handle(action, body):
                  'changes': [{'field': store.LABELS[k], 'old': o, 'new': n} for k, o, n in changes],
                  'lead': store.lead_summary(lead_id)}, ('capture', lead_id, outcome))
     if action == 'lookup':
-        row = store.lookup(business_of(body))
-        return {'ok': True, 'found': bool(row), 'lead': store.lead_summary(row['id']) if row else None}, None
+        biz = business_of(body)
+        row = store.lookup(biz)
+        return {'ok': True, 'found': bool(row), 'lead': store.lead_summary(row['id']) if row else None,
+                'suggested_industry': store.industry_for(biz.get('category', ''), biz.get('name', ''))}, None
     if action == 'update':
         lead_id = int(body['id'])
         if not store.get_lead(lead_id):

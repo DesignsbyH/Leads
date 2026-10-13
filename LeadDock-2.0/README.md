@@ -2,7 +2,13 @@
 
 A Windows desktop CRM plus a Microsoft Edge / Chrome extension. Open a business's Google profile (in Google Maps or Google Search), click the LeadDock icon, and the business is saved as a lead with its phone, website, address, hours, rating and more. **The desktop app does not need to be open** — a small helper that Edge starts on demand saves the lead straight into your LeadDock database. Then open the desktop app whenever you want to work your leads: log calls and notes, move them through your pipeline, and set follow-ups. Everything runs and is stored on your own PC (SQLite). No cloud account is needed.
 
-## What's new in 2.6
+## What's new in 2.7
+- **Business types.** Every lead is filed under a broad type (Church & Religious, Construction & Remodeling, Plumbing, Roofing, HVAC, Restaurants & Food, Medical & Health…), worked out from Google's category. "Baptist church" and "Catholic church" both go under Church & Religious. You can change a lead's type anytime, in the popup or the app.
+- **Filter sidebar** in the app: pick a business type, stage, city and view (Follow-ups due, Never contacted, No website…), and they combine. Every option shows how many leads it has.
+- **Call sessions.** Filter to e.g. your church leads and click **📞 Call these**. LeadDock shows one lead at a time with a big phone number and a **Call** button. Click what happened (No answer, Left voicemail, Interested, Call back later, Sent proposal, Not interested, Wrong number), add a note, then **Save & next**. The call is logged, the stage moves and the follow-up date is set for you.
+- **Faster note-taking and status changes:** one-click stage buttons, one-click call outcomes on every lead, editable timeline notes, and *Type* and *Last note* columns in the list.
+
+## What was new in 2.6
 - **Save leads with LeadDock closed.** The extension talks to a small LeadDock helper that Edge starts only when you save, so you no longer need the desktop app running. The desktop app installs the helper automatically the first time it starts.
 - **Nothing gets lost.** If LeadDock can't be reached at all (e.g. before the helper is installed), the lead waits in the browser (the icon shows a number) and moves into LeadDock automatically later.
 - **Open in LeadDock** in the popup starts the desktop app on that lead if it's closed.
@@ -46,14 +52,15 @@ A blank website means the business has no website on its Google profile. You can
 > If Google shows you a "limited view of Google Maps" (it does this for some signed-out visitors), it hides review counts and most opening hours. Sign in to Google in that browser for complete details.
 
 ## Working your leads in the desktop app
-- **Views** (dropdown next to search): All leads · Follow-ups due · Never contacted · No website · Website issues · Unclaimed profiles · High priority · Open deals. Each view shows its count.
-- **Stage / Priority / Follow-up** sit at the top of the lead panel. Follow-up has quick picks (Tomorrow, Next week…) and a calendar. Changes are logged in the timeline.
-- **Notes & activity:** choose Note, Call, Email, Text, Visit or Meeting, type what happened, and press **Add** (Ctrl+Enter). Logging a call/email/text/visit/meeting records the *last contacted* date and moves a *New* or *Qualified* lead to *Contacted*. **Pinned notes** hold the always-visible summary. Delete your own entries with the ✕ in the timeline.
+- **Filter sidebar (left):** *Show* (All leads · Follow-ups due · Never contacted · No website · Website issues · Unclaimed profiles · High priority · Open deals), *Business type*, *Stage* and *City*. Click one option in each to combine them, e.g. **Church & Religious + New + Springfield, IL**. The numbers show how many leads each option would give you. **✕ Clear filters** resets everything, and the search box narrows it further.
+- **📞 Call these N:** starts a call session for the leads you're looking at (only those with a phone number). For each lead: click **Call** (opens Phone Link/Teams/your calling app) or dial it yourself, click what happened (or press Alt+1…Alt+7), add a note, then **Save & next** (Ctrl+Enter). Each outcome sets sensible defaults you can change before saving: *No answer* → follow up in 2 days, *Left voicemail* → 3 days, *Interested* → stage Follow Up and call tomorrow, *Call back later* → next week, *Sent proposal* → stage Proposal, *Not interested* / *Wrong number* → stage Lost. Stages never move backwards automatically. **Skip** leaves a lead untouched. To call a hand-picked set, select several leads, right-click and choose **Call these leads**.
+- **Lead panel (right):** click a **stage button** to move the lead, pick its **business type**, priority and **follow-up** (quick picks or calendar). **📞 Call** dials the number.
+- **Notes & activity:** the **Log a call** buttons record an outcome in one click (anything typed in the note box is added to it). Or choose Note, Call, Email, Text, Visit or Meeting, type what happened, and press **Add** (Ctrl+Enter). Logging contact records the *last contacted* date and moves a *New* or *Qualified* lead to *Contacted*. **Pinned notes** hold the always-visible summary. Fix or remove your own entries with **edit** / **✕** in the timeline.
 - **Business info** tab: edit any field, including contact person and deal value. Everything saves automatically.
 - **Website & social** tab: run a website scan and see the audit, the issues found and the social links.
-- **Table:** click a column header to sort. Right-click a header to hide or show columns. Right-click leads (Ctrl/Shift-click to select several) to set the stage, priority or follow-up, log a call, scan websites, export or delete. Double-click a lead to start writing a note.
+- **Table:** columns include *Type* and *Last note* (your latest call or note). Click a column header to sort. Right-click a header to hide or show columns (Priority and Last contact are hidden at first). Right-click leads (Ctrl/Shift-click to select several) to set the stage, **business type**, priority or follow-up, log a call outcome, start a call session, scan websites, export or delete. Double-click a lead to start writing a note.
 - **Pipeline** tab: leads and deal value per stage, open pipeline value and win rate. Double-click a stage to list its leads.
-- **Export CSV** exports the leads currently shown (so you can export just the "No website" view, for example). **Import CSV** understands common column names (Business Name, Phone Number, Zip Code, Stage…).
+- **Export CSV** exports the leads currently shown (so you can export, say, just your church leads with no website). **Import CSV** understands common column names (Business Name, Phone Number, Zip Code, Stage…).
 - On startup, LeadDock reminds you about follow-ups that are due.
 
 ## Website scan

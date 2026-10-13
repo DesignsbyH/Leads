@@ -3,11 +3,12 @@ const LISTS = {
   stages: ['New', 'Qualified', 'Contacted', 'Follow Up', 'Proposal', 'Won', 'Lost'],
   priorities: ['Low', 'Normal', 'High', 'Urgent'],
   activity_types: ['Note', 'Call', 'Email', 'Text', 'Visit', 'Meeting'],
+  industries: [],
 };
 const EDITABLE = ['name', 'category', 'phone', 'website', 'address', 'email', 'contact_name', 'rating', 'review_count', 'hours'];
 const KEY_DETAILS = ['phone', 'website', 'address', 'category', 'hours', 'rating'];
 const $ = id => document.getElementById(id);
-const state = { route: 'none', business: null, lead: null };
+const state = { route: 'none', business: null, lead: null, suggestedIndustry: '' };
 
 function show(message, cls = '') { $('status').textContent = message; $('status').className = cls; }
 function setConn(text, cls, title = '') { $('conn').textContent = text; $('conn').className = 'pill ' + cls; $('conn').title = title; }
@@ -125,6 +126,10 @@ function renderLead() {
   } else {
     banner.className = 'banner hidden';
   }
+  const type = (lead && lead.industry) || state.suggestedIndustry;
+  const types = [...new Set([...LISTS.industries, ...(type ? [type] : [])])];
+  $('c_industry').replaceChildren(new Option('Auto-detect from Google category', ''), ...types.map(t => new Option(t, t)));
+  $('c_industry').value = type || '';
   fillSelect($('c_status'), LISTS.stages, lead ? lead.status : 'New');
   fillSelect($('c_priority'), LISTS.priorities, lead ? lead.priority : 'Normal');
   $('c_followup').value = lead ? lead.next_followup || '' : '';
@@ -152,6 +157,7 @@ async function refreshLookup() {
     try {
       const r = await leaddockSend('lookup', { business: state.business });
       state.lead = r.found ? r.lead : null;
+      state.suggestedIndustry = r.suggested_industry || '';
     } catch (e) {
       if (e.unavailable) await checkConnection();
       else show(e.message, 'error');
@@ -196,7 +202,7 @@ async function save() {
   const business = collectBusiness();
   const crm = {
     status: $('c_status').value, priority: $('c_priority').value, next_followup: $('c_followup').value,
-    note: $('c_note').value.trim(), note_type: $('c_note_type').value,
+    note: $('c_note').value.trim(), note_type: $('c_note_type').value, industry: $('c_industry').value,
   };
   const done = async () => { $('c_note').value = ''; await chrome.storage.local.remove('draft'); };
   try {
@@ -219,7 +225,8 @@ async function save() {
     await done();
     renderLead();
     const changed = (r.changes || []).map(c => `${c.field}: ${c.old || '—'} → ${c.new}`).join('\n');
-    show((r.result === 'created' ? `✓ New lead saved: ${r.name}` : `✓ Updated: ${r.name}`) + (changed ? '\n' + changed : ''), 'ok');
+    const filed = r.lead && r.lead.industry ? ` — filed under ${r.lead.industry}` : '';
+    show((r.result === 'created' ? `✓ New lead saved: ${r.name}` : `✓ Updated: ${r.name}`) + filed + (changed ? '\n' + changed : ''), 'ok');
   } catch (e) {
     show(e.message, 'error');
   } finally {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LeadDock — Google Business Capture",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "Save the Google Maps / Google Search business profile you are viewing as a lead in your local LeadDock CRM.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAytcduwtKW5w50xgULjizBAZ0OM+VK/PT8IHtc7JyxCgJPqRHyskdtRDXvDfXiRsNNtInI4iXDvMLnjZgWNHqa+bu0Nwv8jza+Pi+jFRc2nlgJ9HXe0kclQbNB1I6dskea63tOnnyWszl4D5dA0J9so2GRFwRh/2LzGHunf9SwqAvF7btEwPO5U4BHLYn7ULtvqOH/2HRPMibc+3vOcaxjTBJIxHSE1IiyJCuAr86FQkP7SLLI1icBmrmnyQBk/pm/l1p/ZaRDuVxpbuZ0ZTkZ21GU0nA+EaRil/QRACQWRVImOFHljVDk8s71uiY8krlMk+KSAMADWoEXDhrftQGdQIDAQAB",
   "permissions": [
