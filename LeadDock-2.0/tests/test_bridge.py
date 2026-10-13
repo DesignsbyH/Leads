@@ -32,7 +32,7 @@ class BridgeTests(unittest.TestCase):
 
     def test_flow(self):
         status, health = self.call('/health')
-        self.assertEqual((status, health['api']), (200, 3))
+        self.assertEqual((status, health['api']), (200, 4))
         biz = {'name': 'Ace Roofing', 'phone': '217-555-0123', 'maps_url': 'https://www.google.com/maps?cid=42', 'source': 'Google Maps'}
         status, found = self.call('/lookup', {'business': biz})
         self.assertEqual((status, found['found']), (200, False))

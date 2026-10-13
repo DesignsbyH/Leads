@@ -1,10 +1,14 @@
-"""Local HTTP bridge between the browser extension and the desktop app.
+"""Requests from the browser extension, served two ways:
 
-Listens only on 127.0.0.1. Every request except /health must carry the pairing key in X-LeadDock-Key.
-  POST /capture  {business: {...}, crm: {status, priority, next_followup, note, note_type}}  -> save/refresh a lead
-  POST /lookup   {business: {...}}                    -> is this business already a lead? (with recent activity)
-  POST /update   {id, status?, priority?, next_followup?, note?, note_type?}
-  POST /focus    {id}                                 -> show the lead in the desktop app
+* native_host.py — Edge/Chrome start it on demand, so leads save even when the desktop app is closed.
+* the HTTP bridge below — on 127.0.0.1 while the desktop app is open; every request except /health must carry
+  the pairing key in X-LeadDock-Key.
+
+Actions (HTTP: POST /<action> with a JSON body):
+  capture  {business: {...}, crm: {status, priority, next_followup, note, note_type}}  -> save/refresh a lead
+  lookup   {business: {...}}                    -> is this business already a lead? (with recent activity)
+  update   {id, status?, priority?, next_followup?, note?, note_type?}
+  focus    {id}                                 -> show the lead in the desktop app
 """
 import json, secrets, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +17,44 @@ import store
 
 PORT = 18765
 MAX_BODY = 262_144
+API = 4  # 4 = native helper + offline queue aware
+
+
+def health():
+    return {'ok': True, 'app': 'LeadDock', 'version': store.VERSION, 'api': API,
+            'stages': store.STAGES, 'priorities': store.PRIORITIES, 'activity_types': store.ACTIVITY_TYPES}
+
+
+def business_of(body):
+    # The 2.0 extension posted the business fields at the top level.
+    biz = body.get('business', body)
+    if not isinstance(biz, dict):
+        raise ValueError('business must be an object')
+    return biz
+
+
+def handle(action, body):
+    """Run one extension request. Returns (response, event) where event is (kind, lead_id, outcome) or None."""
+    if action == 'health':
+        return health(), None
+    if action == 'capture':
+        crm = body.get('crm') if isinstance(body.get('crm'), dict) else None
+        lead_id, outcome, changes = store.store_lead(business_of(body), crm)
+        return ({'ok': True, 'id': lead_id, 'result': outcome, 'name': store.get_lead(lead_id)['name'],
+                 'changes': [{'field': store.LABELS[k], 'old': o, 'new': n} for k, o, n in changes],
+                 'lead': store.lead_summary(lead_id)}, ('capture', lead_id, outcome))
+    if action == 'lookup':
+        row = store.lookup(business_of(body))
+        return {'ok': True, 'found': bool(row), 'lead': store.lead_summary(row['id']) if row else None}, None
+    if action == 'update':
+        lead_id = int(body['id'])
+        if not store.get_lead(lead_id):
+            raise ValueError('That lead was deleted in LeadDock.')
+        store.apply_crm(lead_id, body)
+        return {'ok': True, 'lead': store.lead_summary(lead_id)}, ('update', lead_id, 'updated')
+    if action == 'focus':
+        return {'ok': True}, ('focus', int(body['id']), '')
+    raise ValueError(f'Unknown request: {action}')
 
 
 def make_handler(key, on_event=lambda kind, lead_id, outcome: None):
@@ -37,8 +79,7 @@ def make_handler(key, on_event=lambda kind, lead_id, outcome: None):
 
         def do_GET(self):
             if self.path == '/health':
-                self.respond(200, {'ok': True, 'app': 'LeadDock', 'version': store.VERSION, 'api': 3,
-                                   'stages': store.STAGES, 'priorities': store.PRIORITIES, 'activity_types': store.ACTIVITY_TYPES})
+                self.respond(200, health())
             else:
                 self.respond(404, {'error': 'Not found'})
 
@@ -52,51 +93,20 @@ def make_handler(key, on_event=lambda kind, lead_id, outcome: None):
             return body
 
         def do_POST(self):
-            route = {'/capture': self.capture, '/lookup': self.lookup, '/update': self.update, '/focus': self.focus}.get(self.path)
-            if not route:
+            action = self.path.strip('/')
+            if action not in ('capture', 'lookup', 'update', 'focus'):
                 return self.respond(404, {'error': 'Not found'})
             if not secrets.compare_digest(self.headers.get('X-LeadDock-Key', ''), key):
                 return self.respond(403, {'error': 'Invalid pairing key — copy it again from LeadDock → Connect browser'})
             try:
-                route(self.read_json())
+                response, event = handle(action, self.read_json())
             except (ValueError, KeyError, TypeError) as e:
-                self.respond(400, {'error': str(e)})
+                return self.respond(400, {'error': str(e)})
             except Exception as e:
-                self.respond(500, {'error': 'LeadDock error: ' + str(e)})
-
-        @staticmethod
-        def business_of(body):
-            # The 2.0 extension posted the business fields at the top level.
-            biz = body.get('business', body)
-            if not isinstance(biz, dict):
-                raise ValueError('business must be an object')
-            return biz
-
-        def capture(self, body):
-            biz = self.business_of(body)
-            crm = body.get('crm') if isinstance(body.get('crm'), dict) else None
-            lead_id, outcome, changes = store.store_lead(biz, crm)
-            self.respond(200, {'ok': True, 'id': lead_id, 'result': outcome, 'name': store.get_lead(lead_id)['name'],
-                               'changes': [{'field': store.LABELS[k], 'old': o, 'new': n} for k, o, n in changes],
-                               'lead': store.lead_summary(lead_id)})
-            on_event('capture', lead_id, outcome)
-
-        def lookup(self, body):
-            row = store.lookup(self.business_of(body))
-            self.respond(200, {'ok': True, 'found': bool(row), 'lead': store.lead_summary(row['id']) if row else None})
-
-        def update(self, body):
-            lead_id = int(body['id'])
-            if not store.get_lead(lead_id):
-                raise ValueError('That lead was deleted in LeadDock.')
-            store.apply_crm(lead_id, body)
-            self.respond(200, {'ok': True, 'lead': store.lead_summary(lead_id)})
-            on_event('update', lead_id, 'updated')
-
-        def focus(self, body):
-            lead_id = int(body['id'])
-            self.respond(200, {'ok': True})
-            on_event('focus', lead_id, '')
+                return self.respond(500, {'error': 'LeadDock error: ' + str(e)})
+            self.respond(200, response)
+            if event:
+                on_event(*event)
 
         def log_message(self, *args):
             pass

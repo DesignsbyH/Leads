@@ -1,8 +1,15 @@
 # LeadDock — Local business prospecting CRM
 
-A Windows desktop CRM plus a Microsoft Edge / Chrome extension. Open a business's Google profile (in Google Maps or Google Search), click the LeadDock icon, and the business is saved as a lead with its phone, website, address, hours, rating and more. Then work your leads in the desktop app: log calls and notes, move them through your pipeline, and set follow-ups. Everything runs and is stored on your own PC (SQLite). No cloud account is needed.
+A Windows desktop CRM plus a Microsoft Edge / Chrome extension. Open a business's Google profile (in Google Maps or Google Search), click the LeadDock icon, and the business is saved as a lead with its phone, website, address, hours, rating and more. **The desktop app does not need to be open** — a small helper that Edge starts on demand saves the lead straight into your LeadDock database. Then open the desktop app whenever you want to work your leads: log calls and notes, move them through your pipeline, and set follow-ups. Everything runs and is stored on your own PC (SQLite). No cloud account is needed.
 
-## What's new in 2.5
+## What's new in 2.6
+- **Save leads with LeadDock closed.** The extension talks to a small LeadDock helper that Edge starts only when you save, so you no longer need the desktop app running. The desktop app installs the helper automatically the first time it starts.
+- **Nothing gets lost.** If LeadDock can't be reached at all (e.g. before the helper is installed), the lead waits in the browser (the icon shows a number) and moves into LeadDock automatically later.
+- **Open in LeadDock** in the popup starts the desktop app on that lead if it's closed.
+- The popup shows the lead's **Google Maps link**, and says plainly when a business has **no website on its Google profile** (that's a hot lead, not a capture problem).
+- Closing the desktop app window now simply quits it.
+
+## What was new in 2.5
 - **Capture fixed.** When you opened a business from a search results list, the extension read the *results list* instead of the business, so phone, website, address and category came back empty (and the rating could belong to a different business). It now finds the business panel.
 - **More details per lead:** phone, website, full address split into city/state/ZIP, category, rating, review count, opening hours, plus code, map coordinates, open/closed status, unclaimed-profile flag, and Google's permanent place ID. The place ID means re-capturing a business always updates the same lead, even if the Maps link changes.
 - **Google Search business profiles** (the panel on the right of search results) can be captured too.
@@ -14,24 +21,27 @@ A Windows desktop CRM plus a Microsoft Edge / Chrome extension. Open a business'
 1. Install Python 3.10+ from python.org, enabling **Add Python to PATH** (or use the Windows `py` launcher).
 2. Unzip the folder to `C:\LeadDock-2.0` (recommended). **Do not launch from inside the ZIP.**
 3. Double-click **Start-LeadDock.bat**. It installs the desktop dependencies into `%LOCALAPPDATA%\LeadDock2\venv` so OneDrive/Desktop folder lengths do not break installs.
-4. Keep LeadDock running. Closing the window hides it to the system tray so the browser can keep sending leads. Use **More ▾ → Exit LeadDock** (or the tray menu) to quit.
-5. Click **Connect browser** in LeadDock and copy the pairing key.
-6. Open `edge://extensions` (Chrome: `chrome://extensions`), enable **Developer mode**, choose **Load unpacked**, and choose `C:\LeadDock-2.0\extension` (the inner extension folder).
-7. Click the LeadDock extension icon (or press **Alt+Shift+L**), click **⚙**, paste the pairing key, click **Save key**.
+4. The first start also installs the **browser helper**. After that you can close LeadDock whenever you like; the extension still saves leads.
+5. Open `edge://extensions` (Chrome: `chrome://extensions`), enable **Developer mode**, choose **Load unpacked**, and choose `C:\LeadDock-2.0\extension` (the inner extension folder).
+6. Open a business in Google Maps and click the LeadDock icon (or press **Alt+Shift+L**). The pill at the top should say **Ready**.
 
-## Updating from LeadDock 2.0
-Your leads, notes and pairing key are kept. The database is upgraded automatically the first time the new version starts.
-1. Exit the running LeadDock from the system tray (right-click the tray icon → **Exit LeadDock**).
-2. Replace the files in your `LeadDock-2.0` folder with the new ones and double-click **Start-LeadDock.bat**.
-3. In `edge://extensions`, click **Reload (↻)** on the LeadDock extension. **This step is required.** Without it Edge keeps using the old capture code.
+## Updating
+Your leads and notes are kept. The database is upgraded automatically the first time the new version starts.
+1. Exit the running LeadDock (right-click the tray icon → **Exit LeadDock**, or close its window).
+2. Update the files (`git pull`, or replace them) and double-click **Start-LeadDock.bat** once. This installs/refreshes the browser helper. You can close the app afterwards.
+3. In `edge://extensions`, click **Remove** on the old LeadDock extension, then **Load unpacked** and pick the `extension` folder again. **Updating to 2.6 needs this remove-and-load step once** (the extension now has a fixed ID so the helper can trust it); for later updates **Reload (↻)** is enough.
 
 ## Capturing leads
+The pill at the top of the popup shows how it saves: **Ready** (straight into LeadDock, app can be closed), **Connected** (through the open app), or **Saves offline** (the lead waits in the browser and is delivered automatically once LeadDock can be reached).
+
 1. In Google Maps, search (e.g. "plumbers in Springfield IL") and **click a business** so its details panel opens. Or open a business's profile in Google Search.
 2. Click the LeadDock icon (or press **Alt+Shift+L**). The popup shows what was found, ready to edit. Fields Google doesn't list are highlighted so you can type them in.
 3. Optionally pick a stage, priority and follow-up date, and add a note, then click **Save lead**.
 4. If the business is already in LeadDock, the popup says so and shows its stage and recent activity. **Update lead** refreshes the Google details without touching your notes, stage or contact info.
 
 Flags in the popup point out hot prospects: **No website**, **Unclaimed Google profile**, **Only N reviews**, closed businesses.
+
+A blank website means the business has no website on its Google profile. You can tell from Google itself: in the results list such businesses only have a **Directions** button (no **Website** button), and their profile shows **Add website**.
 
 > If Google shows you a "limited view of Google Maps" (it does this for some signed-out visitors), it hides review counts and most opening hours. Sign in to Google in that browser for complete details.
 
@@ -47,24 +57,26 @@ Flags in the popup point out hot prospects: **No website**, **Unclaimed Google p
 - On startup, LeadDock reminds you about follow-ups that are due.
 
 ## Website scan
-When a captured lead has a website, LeadDock scans it in the background. Turn this off in **More ▾ → Automatically scan websites of captured leads**. You can also scan from the lead panel, or with **More ▾ → Scan all websites not scanned yet**. The scan only visits that business's own site (homepage plus up to two contact/about pages). It fills in a blank email or phone, adds social links, and records issues: no HTTPS, not mobile-friendly, outdated ©, slow, broken, no meta description, or only a Facebook/Yelp page. Some sites block automated visits; those are marked "could not scan" rather than counted as broken.
+When a captured lead has a website, LeadDock scans it in the background (leads saved while the app was closed are scanned the next time you open it). Turn this off in **More ▾ → Automatically scan websites of captured leads**. You can also scan from the lead panel, or with **More ▾ → Scan all websites not scanned yet**. The scan only visits that business's own site (homepage plus up to two contact/about pages). It fills in a blank email or phone, adds social links, and records issues: no HTTPS, not mobile-friendly, outdated ©, slow, broken, no meta description, or only a Facebook/Yelp page. Some sites block automated visits; those are marked "could not scan" rather than counted as broken.
 
 ## Data & privacy
 - Data: `%LOCALAPPDATA%\LeadDock2\leads.sqlite3`. Pairing key: `%LOCALAPPDATA%\LeadDock2\capture_key.txt`. Settings: `settings.json` in the same folder. Use **More ▾ → Back up database…** regularly.
-- The browser bridge listens **only** on `127.0.0.1:18765` and requires the pairing key for every request. Anyone with access to your Windows profile can read the local data; protect your account.
+- The browser helper is registered for your Windows user only (`HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.designsbyh.leaddock`, plus the Chrome/Brave equivalents) and only the LeadDock extension is allowed to start it. Its files live in `%LOCALAPPDATA%\LeadDock2\native`.
+- While the desktop app is open it also listens on `127.0.0.1:18765` (your PC only) as a fallback; that route requires the pairing key. Anyone with access to your Windows profile can read the local data; protect your account.
 
 ## Limitations
 - The extension captures only the business you currently have open. It **does not bulk-scrape Google Maps**.
 - Google changes its page layout often, so detection is best-effort. Check the popup preview and type in anything missing. For production-grade data, use Google's official Places API and follow Google Maps' terms and attribution rules.
 
 ## Troubleshooting
-- **Popup says "Desktop app offline":** start LeadDock (Start-LeadDock.bat) or open it from the tray.
+- **Popup says "Saves offline":** run **Start-LeadDock.bat** once so the helper gets installed, and make sure you removed and re-loaded the extension after updating (see *Updating*). Your saved leads are not lost; they're delivered automatically.
+- **Still "Saves offline" on a work PC:** your IT policy may block browser helpers. Use the fallback: open LeadDock → **Connect browser**, copy the pairing key, paste it under ⚙ in the popup. Leads then save (and waiting ones are delivered) whenever the app is open.
 - **"Key rejected":** copy the key again from **Connect browser** and paste it under ⚙ in the popup.
-- **"Restart LeadDock app":** the desktop app is still the old version. Exit it from the tray and start it again.
-- **Fields still missing after updating:** make sure you clicked **Reload** on the extension in `edge://extensions`, then reload the Google Maps tab. Click the business so its full details panel is open (not just highlighted in the list), then use **↻ Re-read page** in the popup.
-- **Port already in use:** another LeadDock is already running. Check the system tray.
+- **Website is blank:** check the business on Google Maps; if it has no **Website** button in the list (and shows **Add website** on its profile), it simply has no website listed.
+- **Fields still missing after updating:** make sure you re-loaded the extension in `edge://extensions`, then reload the Google Maps tab. Click the business so its full details panel is open (not just highlighted in the list), then use **↻ Re-read page** in the popup.
+- **Port already in use:** another LeadDock window is already open.
 - **Dependencies fail:** update Python and rerun the batch file. To retry cleanly, exit LeadDock and delete `%LOCALAPPDATA%\LeadDock2\venv` **only**; never delete the database folder.
 
 ## For developers
-Code layout: `leaddock/store.py` (database, merge rules), `leaddock/enrich.py` (website scanner), `leaddock/bridge.py` (local HTTP API), `leaddock/app.py` (PySide6 UI), `extension/extractor.js` (reads the Google page), `extension/popup.*`.
+Code layout: `leaddock/store.py` (database, merge rules), `leaddock/enrich.py` (website scanner), `leaddock/bridge.py` (extension requests + local HTTP API), `leaddock/native_host.py` (browser helper), `leaddock/app.py` (PySide6 UI), `extension/extractor.js` (reads the Google page), `extension/transport.js` (helper → app → offline queue), `extension/popup.*`, `extension/background.js` (delivers waiting leads).
 Run the tests (standard library only) from the `LeadDock-2.0` folder: `python -m unittest discover -s tests`

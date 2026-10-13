@@ -76,6 +76,13 @@ globalThis.leadDockExtract = function leadDockExtract() {
     let website = siteEl ? unwrap(siteEl.getAttribute('href') || (siteEl.closest('a') && siteEl.closest('a').getAttribute('href')) || '') : '';
     if (!website && siteEl) website = clean(label(siteEl).replace(/^website:\s*/i, ''));
     if (website && isGoogle(website)) website = '';
+    if (!website) {
+      // Fallback: the results list has a "Visit <name>'s website" button for businesses that list a site.
+      const visit = [...document.querySelectorAll('a[aria-label][href]')]
+        .find(a => { const m = label(a).match(/^visit (.+?)['’]s website$/i); return m && norm(m[1]) === norm(name); });
+      if (visit) website = unwrap(visit.getAttribute('href'));
+      if (website && isGoogle(website)) website = '';
+    }
     const plus_code = clean(label(item(/^oloc$/)).replace(/^plus code:\s*/i, ''));
 
     const category = text(panel.querySelector('button[jsaction*=".category"]')) || text(panel.querySelector('button[jsaction*="category"]'));

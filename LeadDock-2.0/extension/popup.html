@@ -48,21 +48,30 @@
   #status.ok { color: #7fe0b0; } #status.error { color: #ff9fa8; }
   .hidden { display: none !important; }
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+  input[readonly] { color: #9fb0cf; background: #131b2c; }
+  .linkrow { display: flex; gap: 6px; align-items: center; }
+  .linkrow a { color: #8fa8ff; text-decoration: none; font-size: 15px; padding: 0 4px; }
+  .notice { background: #2c2412; border: 1px solid #6a5222; color: #ffd98a; border-radius: 9px; padding: 8px 11px; margin-bottom: 10px; font-size: 12px; }
 </style>
 </head>
 <body>
   <div class="top">
     <h1>◈ LeadDock</h1>
     <span id="conn" class="pill">Checking…</span>
-    <button id="toggleSettings" class="icon" title="Pairing key">⚙</button>
+    <button id="toggleSettings" class="icon" title="Connection settings">⚙</button>
   </div>
 
   <div id="settings" class="card hidden">
-    <h2>Connect to the desktop app</h2>
-    <div class="muted">In LeadDock click <b>Connect browser</b>, copy the pairing key and paste it here.</div>
-    <input id="key" type="password" placeholder="Paste pairing key" autocomplete="off">
-    <div class="split"><button id="saveKey" class="secondary">Save key</button><button id="showKey" class="secondary">Show</button></div>
+    <h2>How LeadDock saves</h2>
+    <div id="routeInfo" class="muted"></div>
+    <details id="keyBox" style="margin-top:8px"><summary>Pairing key (only needed if the helper can't be installed)</summary>
+      <div class="muted" style="margin-top:4px">In LeadDock click <b>Connect browser</b>, copy the key and paste it here. It's used only while the desktop app is open.</div>
+      <input id="key" type="password" placeholder="Paste pairing key" autocomplete="off">
+      <div class="split"><button id="saveKey" class="secondary">Save key</button><button id="showKey" class="secondary">Show</button></div>
+    </details>
   </div>
+
+  <div id="queueNote" class="notice hidden"></div>
 
   <div id="message" class="card muted">Reading the open business profile…</div>
 
@@ -81,6 +90,7 @@
         <div><label>Contact person<input id="f_contact_name" placeholder="Owner / manager"></label></div>
         <div><label>Google rating<input id="f_rating"></label></div>
         <div><label>Reviews<input id="f_review_count"></label></div>
+        <div class="full"><label>Google Maps link</label><div class="linkrow"><input id="f_maps_url" readonly><a id="mapsOpen" href="#" target="_blank" title="Open the Google Maps listing">↗</a></div></div>
       </div>
       <details id="hoursBox"><summary>Hours</summary><textarea id="f_hours" rows="4"></textarea></details>
       <div id="chips" class="chips"></div>
@@ -110,6 +120,7 @@
     <button id="save" class="primary" disabled>Save lead</button>
     <div id="status"></div>
   </div>
+<script src="transport.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

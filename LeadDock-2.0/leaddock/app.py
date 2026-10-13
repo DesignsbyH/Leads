@@ -572,7 +572,7 @@ class MainWindow(QMainWindow):
         self.signals.bridge_event.connect(self.on_bridge_event)
         self.signals.scan_done.connect(self.on_scan_done)
         self.scanner = WebsiteScanner(self.signals)
-        self.hidden_hint_shown = False
+        self.helper_status = ''
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -716,6 +716,12 @@ class MainWindow(QMainWindow):
         self.tray.setToolTip('LeadDock')
         self.tray.show()
         QTimer.singleShot(1500, self.remind_followups)
+        # The browser helper writes leads straight into the database, so watch it for changes made outside the app.
+        self.db_stamp, self.last_lead_id = store.change_stamp(), max(store.lead_ids_after(0) or [0])
+        self.watcher = QTimer(self)
+        self.watcher.timeout.connect(self.check_outside_changes)
+        self.watcher.start(3000)
+        QTimer.singleShot(2500, self.scan_missed_captures)
 
     # ---------------------------------------------------------------- list
     def eventFilter(self, obj, event):
@@ -811,6 +817,7 @@ class MainWindow(QMainWindow):
                     break
         self.table.verticalScrollBar().setValue(scroll)
         self.refresh_pipeline()
+        self.db_stamp = store.change_stamp()
 
     def refresh_pipeline(self):
         stages, total, _ = store.pipeline_summary()
@@ -923,12 +930,40 @@ class MainWindow(QMainWindow):
         elif kind == 'capture' and not self.table.selectedIndexes():
             self.select_id(lead_id, reveal=False)
         if kind == 'capture':
-            verb = 'added' if outcome == 'created' else 'updated'
-            self.statusBar().showMessage(f"{row['name']} {verb} from the browser", 8000)
-            if self.isHidden():
-                self.tray.showMessage('LeadDock', f"{row['name']} {verb}", QSystemTrayIcon.MessageIcon.Information, 2500)
-            if self.auto_scan.isChecked() and row['website'] and not row['website_scanned_at']:
-                self.scanner.add(lead_id)
+            self.announce_capture(row, 'added' if outcome == 'created' else 'updated')
+
+    def announce_capture(self, row, verb):
+        self.statusBar().showMessage(f"{row['name']} {verb} from the browser", 8000)
+        if self.isHidden() or self.isMinimized():
+            self.tray.showMessage('LeadDock', f"{row['name']} {verb}", QSystemTrayIcon.MessageIcon.Information, 2500)
+        if self.auto_scan.isChecked() and row['website'] and not row['website_scanned_at']:
+            self.scanner.add(row['id'])
+
+    def check_outside_changes(self):
+        """Pick up leads the browser helper saved while this window is open."""
+        try:
+            stamp = store.change_stamp()
+        except sqlite3.Error:
+            return
+        if stamp == self.db_stamp:
+            return
+        new_ids = store.lead_ids_after(self.last_lead_id)
+        self.last_lead_id = max([self.last_lead_id] + new_ids)
+        self.refresh()
+        self.details.reload()
+        for lead_id in new_ids:
+            row = store.get_lead(lead_id)
+            if row and (row['source'] or '').startswith('Google'):
+                self.announce_capture(row, 'added')
+        if len(new_ids) == 1 and not self.table.selectedIndexes():
+            self.select_id(new_ids[0], reveal=False)
+
+    def scan_missed_captures(self):
+        """Scan websites of leads that were captured while LeadDock was closed."""
+        if self.auto_scan.isChecked():
+            ids = store.unscanned_captures()
+            if ids:
+                self.scan_ids(ids)
 
     def scan_ids(self, ids):
         ids = list(ids)
@@ -999,27 +1034,33 @@ class MainWindow(QMainWindow):
         key = store.get_key()
         d = QDialog(self)
         d.setWindowTitle('Connect your browser')
-        d.setMinimumWidth(600)
+        d.setMinimumWidth(620)
         d.setStyleSheet(STYLE)
         layout = QVBoxLayout(d)
+        helper = QLabel(chip(self.helper_status, GOOD if self.helper_status.startswith('Browser helper installed') else HOT))
+        helper.setTextFormat(Qt.TextFormat.RichText)
+        helper.setWordWrap(True)
+        layout.addWidget(helper)
         info = QLabel('1. In Edge open <b>edge://extensions</b> (Chrome: <b>chrome://extensions</b>) and turn on <b>Developer mode</b>.<br>'
-                      '2. Click <b>Load unpacked</b> and choose the <b>LeadDock-2.0\\extension</b> folder.<br>'
-                      '&nbsp;&nbsp;&nbsp;&nbsp;Already installed? Click the extension’s <b>↻ Reload</b> button after updating LeadDock.<br>'
-                      '3. Click the LeadDock icon (or press <b>Alt+Shift+L</b>), click ⚙ and paste this pairing key.<br>'
-                      '4. Open any business in Google Maps — or a business profile in Google Search — and click the LeadDock icon.')
+                      '2. If an older LeadDock extension is listed, click <b>Remove</b> on it first.<br>'
+                      '3. Click <b>Load unpacked</b> and choose the <b>LeadDock-2.0\\extension</b> folder.<br>'
+                      '4. Open any business in Google Maps (or a business profile in Google Search) and click the LeadDock icon '
+                      '(or press <b>Alt+Shift+L</b>). The pill at the top should say <b>Ready</b>.<br><br>'
+                      'Leads save straight into LeadDock — this app does <b>not</b> need to be open.')
         info.setTextFormat(Qt.TextFormat.RichText)
         info.setWordWrap(True)
         layout.addWidget(info)
+        msg = QLabel('Pairing key — only needed if your PC blocks the browser helper (then paste it under ⚙ in the extension, '
+                     'and leads save while this app is open):')
+        msg.setObjectName('hint')
+        msg.setWordWrap(True)
+        layout.addWidget(msg)
         field = QLineEdit(key)
         field.setReadOnly(True)
         layout.addWidget(field)
         b = QPushButton('Copy pairing key')
-        b.setObjectName('primary')
         b.clicked.connect(lambda: (QApplication.clipboard().setText(key), b.setText('✓ Copied')))
         layout.addWidget(b)
-        msg = QLabel('The key stays on this computer. LeadDock only listens to your own PC (127.0.0.1).')
-        msg.setObjectName('hint')
-        layout.addWidget(msg)
         d.exec()
 
     def remind_followups(self):
@@ -1034,23 +1075,32 @@ class MainWindow(QMainWindow):
         self.activateWindow()
 
     def closeEvent(self, event):
+        # The browser extension saves through its helper, so closing the window simply quits.
         self.details.save_pending()
-        # Keep running in the tray so the browser extension can still save leads. Use More ▾ → Exit to quit.
-        self.hide()
-        event.ignore()
-        if not self.hidden_hint_shown:
-            self.hidden_hint_shown = True
-            self.tray.showMessage('LeadDock is still running', 'It keeps receiving leads from your browser. Right-click the tray icon to exit.',
-                                  QSystemTrayIcon.MessageIcon.Information, 3500)
+        self.tray.hide()
+        event.accept()
+        QApplication.instance().quit()
 
 
 def main():
     store.init_db()
+    try:  # (re)register the browser helper so the extension can save while this app is closed
+        import native_host
+        helper_status = native_host.install()
+    except Exception as e:
+        helper_status = f'Browser helper could not be installed ({e}). Leads still save while LeadDock is open.'
     app = QApplication(sys.argv)
     app.setApplicationName('LeadDock')
-    app.setQuitOnLastWindowClosed(False)
     window = MainWindow()
+    window.helper_status = helper_status
+    window.statusBar().showMessage(helper_status + f'  ·  Database: {store.DB_PATH}', 15000)
     window.showMaximized()
+    if '--select' in sys.argv:  # "Open in LeadDock" from the extension
+        try:
+            lead_id = int(sys.argv[sys.argv.index('--select') + 1])
+            QTimer.singleShot(400, lambda: (window.select_id(lead_id), window.bring_to_front()))
+        except (IndexError, ValueError):
+            pass
     app.aboutToQuit.connect(window.details.save_pending)
     sys.exit(app.exec())
 

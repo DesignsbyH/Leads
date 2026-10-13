@@ -12,7 +12,7 @@ APP_DIR = Path(os.environ.get('LEADDOCK_DATA_DIR') or Path(os.environ.get('LOCAL
 DB_PATH = APP_DIR / 'leads.sqlite3'
 KEY_PATH = APP_DIR / 'capture_key.txt'
 SETTINGS_PATH = APP_DIR / 'settings.json'
-VERSION = '2.5'
+VERSION = '2.6'
 
 STAGES = ['New', 'Qualified', 'Contacted', 'Follow Up', 'Proposal', 'Won', 'Lost']
 CLOSED_STAGES = ('Won', 'Lost')
@@ -666,3 +666,23 @@ def quick_date(days):
 
 def maps_search_url(name, address=''):
     return 'https://www.google.com/maps/search/?api=1&query=' + quote_plus(' '.join(x for x in (name, address) if x))
+
+
+# ---------------------------------------------------------------- changes made by the browser helper
+
+def change_stamp():
+    """Cheap fingerprint of the database; changes whenever a lead or timeline entry is added or edited."""
+    with db() as cx:
+        return tuple(cx.execute('SELECT COUNT(*), MAX(updated_at), MAX(id), (SELECT MAX(id) FROM activities) FROM leads').fetchone())
+
+
+def lead_ids_after(lead_id):
+    with db() as cx:
+        return [r[0] for r in cx.execute('SELECT id FROM leads WHERE id>? ORDER BY id', (lead_id or 0,))]
+
+
+def unscanned_captures():
+    """Leads captured from Google whose website hasn't been scanned yet (e.g. saved while the app was closed)."""
+    with db() as cx:
+        return [r[0] for r in cx.execute("""SELECT id FROM leads WHERE website!='' AND (website_scanned_at='' OR website_scanned_at IS NULL)
+                                            AND source LIKE 'Google%' ORDER BY id""")]

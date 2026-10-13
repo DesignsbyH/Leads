@@ -1,4 +1,4 @@
-const API = 'http://127.0.0.1:18765';
+// Uses transport.js (loaded first) to reach LeadDock: helper first, then the open desktop app, else queue the lead.
 const LISTS = {
   stages: ['New', 'Qualified', 'Contacted', 'Follow Up', 'Proposal', 'Won', 'Lost'],
   priorities: ['Low', 'Normal', 'High', 'Urgent'],
@@ -7,10 +7,10 @@ const LISTS = {
 const EDITABLE = ['name', 'category', 'phone', 'website', 'address', 'email', 'contact_name', 'rating', 'review_count', 'hours'];
 const KEY_DETAILS = ['phone', 'website', 'address', 'category', 'hours', 'rating'];
 const $ = id => document.getElementById(id);
-const state = { key: '', api: 0, connected: false, business: null, lead: null };
+const state = { route: 'none', business: null, lead: null };
 
 function show(message, cls = '') { $('status').textContent = message; $('status').className = cls; }
-function setConn(text, cls) { $('conn').textContent = text; $('conn').className = 'pill ' + cls; }
+function setConn(text, cls, title = '') { $('conn').textContent = text; $('conn').className = 'pill ' + cls; $('conn').title = title; }
 function fillSelect(select, items, value) {
   select.replaceChildren(...items.map(v => new Option(v, v)));
   if (value && items.includes(value)) select.value = value;
@@ -26,48 +26,34 @@ function niceDate(iso) {
   return isNaN(d) ? iso : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }
 function placeKey() { return state.business ? (state.business.place_id || state.business.maps_url || state.business.name) : ''; }
-
-async function api(path, body) {
-  let res;
-  try {
-    res = await fetch(API + path, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-LeadDock-Key': state.key },
-      body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
-    });
-  } catch (e) {
-    state.connected = false;
-    setConn('Desktop app offline', 'bad');
-    throw new Error('LeadDock desktop app is not running. Start it with Start-LeadDock.bat, then try again.');
-  }
-  let data = {};
-  try { data = await res.json(); } catch (e) { /* empty body */ }
-  if (res.status === 403) {
-    setConn('Key rejected', 'bad');
-    $('settings').classList.remove('hidden');
-  }
-  if (!res.ok) throw new Error(data.error || `LeadDock returned an error (${res.status})`);
-  return data;
-}
+function plural(n, word) { return `${n} ${word}${n === 1 ? '' : 's'}`; }
 
 async function checkConnection() {
-  try {
-    const res = await fetch(API + '/health', { signal: AbortSignal.timeout(2500) });
-    const health = await res.json();
-    state.connected = true;
-    state.api = health.api || 2;
-    for (const k of Object.keys(LISTS)) if (Array.isArray(health[k])) LISTS[k] = health[k];
-    if (!state.key) {
-      setConn('Pairing key needed', 'warn');
-      $('settings').classList.remove('hidden');
-    } else if (state.api < 3) {
-      setConn('Restart LeadDock app', 'warn');
-    } else {
-      setConn('Connected', 'ok');
-    }
-  } catch (e) {
-    state.connected = false;
-    setConn('Desktop app offline', 'bad');
-  }
+  const status = await leaddockStatus();
+  state.route = status.route;
+  if (status.health) for (const k of Object.keys(LISTS)) if (Array.isArray(status.health[k])) LISTS[k] = status.health[k];
+  const info = {
+    helper: ['Ready', 'ok', 'Leads save straight into your LeadDock database. The desktop app does not need to be open.'],
+    app: ['Connected', 'ok', 'Saving through the open LeadDock app. Run Start-LeadDock.bat once so leads also save while the app is closed.'],
+    none: ['Saves offline', 'warn', status.needsKey
+      ? 'The LeadDock app is open but this browser has no pairing key. Leads wait here until they can be delivered.'
+      : 'LeadDock can\'t be reached yet, so leads wait in this browser and move into LeadDock automatically. Run Start-LeadDock.bat once on this PC to install the helper; after that the app never needs to be open.'],
+  }[state.route];
+  setConn(info[0], info[1], info[2]);
+  $('routeInfo').textContent = info[2];
+  if (state.route === 'none') $('settings').classList.remove('hidden');
+}
+
+async function refreshQueueNote(extra = '') {
+  const queue = await leaddockQueue();
+  const failed = queue.filter(i => i.error);
+  const lines = [];
+  if (extra) lines.push(extra);
+  if (queue.length) lines.push(`${plural(queue.length, 'lead')} waiting in this browser — they move into LeadDock automatically once it can be reached.`);
+  if (failed.length) lines.push('Could not deliver: ' + failed.map(i => `${i.business.name} (${i.error})`).join('; '));
+  $('queueNote').textContent = lines.join('\n');
+  $('queueNote').style.whiteSpace = 'pre-wrap';
+  $('queueNote').classList.toggle('hidden', !lines.length);
 }
 
 async function readPage() {
@@ -94,10 +80,12 @@ function renderBusiness(result) {
     input.value = b[f] || '';
     const missing = !input.value && KEY_DETAILS.includes(f);
     input.classList.toggle('missing', missing);
-    if (missing) input.placeholder = 'Not on the profile — type it if you know it';
+    if (missing) input.placeholder = f === 'website' ? 'No website on this Google profile' : 'Not on the profile — type it if you know it';
   }
+  $('f_maps_url').value = b.maps_url || '';
+  $('mapsOpen').href = b.maps_url || '#';
   $('hoursBox').open = false;
-  $('hoursBox').querySelector('summary').textContent = b.hours ? `Hours (${b.hours.split('\n').length} days)` : 'Hours (not listed)';
+  $('hoursBox').querySelector('summary').textContent = b.hours ? `Hours (${plural(b.hours.split('\n').length, 'day')})` : 'Hours (not listed)';
 
   const chips = [];
   const found = KEY_DETAILS.filter(f => b[f]).length;
@@ -106,7 +94,7 @@ function renderBusiness(result) {
   if (b.claimed === 'No') chips.push(['Unclaimed Google profile', 'hot']);
   if (/closed/i.test(b.business_status || '')) chips.push([b.business_status, 'bad']);
   const reviews = parseInt(String(b.review_count || '').replace(/\D/g, ''), 10);
-  if (!isNaN(reviews) && reviews < 10) chips.push([`Only ${reviews} review${reviews === 1 ? '' : 's'}`, 'hot']);
+  if (!isNaN(reviews) && reviews < 10) chips.push([`Only ${plural(reviews, 'review')}`, 'hot']);
   if (b.rating && parseFloat(b.rating) < 4) chips.push([`Rated ${b.rating}`, '']);
   chips.push([b.source || 'Google', '']);
   $('chips').replaceChildren(...chips.map(([text, cls]) => {
@@ -132,7 +120,7 @@ function renderLead() {
       lead.next_followup ? `follow up ${niceDate(lead.next_followup)}` : '',
       lead.last_contacted ? `last contacted ${niceDate(lead.last_contacted)}` : 'never contacted'].filter(Boolean).join(' · '),
       'Saving refreshes the Google details and keeps your notes.');
-  } else if (state.connected && state.key && state.api >= 3) {
+  } else if (state.route !== 'none') {
     write('new', 'New lead.', 'This business is not in LeadDock yet.');
   } else {
     banner.className = 'banner hidden';
@@ -160,12 +148,14 @@ function renderLead() {
 
 async function refreshLookup() {
   state.lead = null;
-  if (state.connected && state.key && state.api >= 3) {
+  if (state.route !== 'none') {
     try {
-      const r = await api('/lookup', { business: state.business });
+      const r = await leaddockSend('lookup', { business: state.business });
       state.lead = r.found ? r.lead : null;
-      setConn('Connected', 'ok');
-    } catch (e) { show(e.message, 'error'); }
+    } catch (e) {
+      if (e.unavailable) await checkConnection();
+      else show(e.message, 'error');
+    }
   }
   renderLead();
 }
@@ -189,7 +179,6 @@ async function loadPage() {
       $('c_note_type').value = draft.type || 'Note';
     }
     $('save').disabled = false;
-    if (!state.connected) show('Start the LeadDock desktop app to save this lead.', 'error');
   } catch (e) {
     $('message').textContent = e.message;
   }
@@ -204,21 +193,30 @@ function collectBusiness() {
 async function save() {
   $('save').disabled = true;
   show('Saving…');
+  const business = collectBusiness();
+  const crm = {
+    status: $('c_status').value, priority: $('c_priority').value, next_followup: $('c_followup').value,
+    note: $('c_note').value.trim(), note_type: $('c_note_type').value,
+  };
+  const done = async () => { $('c_note').value = ''; await chrome.storage.local.remove('draft'); };
   try {
-    if (!state.key) throw new Error('Paste the pairing key from LeadDock → Connect browser first (⚙ above).');
-    if (!state.connected) await checkConnection();
-    const business = collectBusiness();
     if (!business.name) throw new Error('Business name is required.');
-    const crm = {
-      status: $('c_status').value, priority: $('c_priority').value, next_followup: $('c_followup').value,
-      note: $('c_note').value.trim(), note_type: $('c_note_type').value,
-    };
-    // A LeadDock desktop app that has not been restarted since updating still expects the old format.
-    const r = await api('/capture', state.api >= 3 ? { business, crm } : business);
+    let r;
+    try {
+      r = await leaddockSend('capture', { business, crm });
+    } catch (e) {
+      if (!e.unavailable) throw e;
+      // LeadDock can't be reached right now: keep the lead in the browser and deliver it automatically later.
+      const waiting = await leaddockEnqueue(business, crm);
+      await done();
+      await checkConnection();
+      await refreshQueueNote();
+      show(`✓ Saved in this browser (${plural(waiting, 'lead')} waiting). It moves into LeadDock automatically — nothing else to do.`, 'ok');
+      return;
+    }
     state.business = business;
     state.lead = r.lead || null;
-    $('c_note').value = '';
-    await chrome.storage.local.remove('draft');
+    await done();
     renderLead();
     const changed = (r.changes || []).map(c => `${c.field}: ${c.old || '—'} → ${c.new}`).join('\n');
     show((r.result === 'created' ? `✓ New lead saved: ${r.name}` : `✓ Updated: ${r.name}`) + (changed ? '\n' + changed : ''), 'ok');
@@ -234,19 +232,21 @@ $('rescan').onclick = () => { show(''); loadPage(); };
 $('toggleSettings').onclick = () => $('settings').classList.toggle('hidden');
 $('showKey').onclick = () => { const k = $('key'); k.type = k.type === 'password' ? 'text' : 'password'; $('showKey').textContent = k.type === 'password' ? 'Show' : 'Hide'; };
 $('saveKey').onclick = async () => {
-  state.key = $('key').value.trim();
-  await chrome.storage.local.set({ pairingKey: state.key });
+  await chrome.storage.local.set({ pairingKey: $('key').value.trim() });
   await checkConnection();
-  if (state.connected && state.key) {
-    show('Pairing key saved.', 'ok');
+  show(state.route === 'none' ? 'Key saved. LeadDock is still not reachable — leads will wait in this browser.' : 'Key saved.', state.route === 'none' ? 'error' : 'ok');
+  if (state.route !== 'none') {
+    const { sent } = await leaddockFlush();
+    await refreshQueueNote(sent ? `✓ Delivered ${plural(sent, 'waiting lead')} to LeadDock.` : '');
     if (state.business) await refreshLookup();
-    if ($('conn').textContent === 'Connected') $('settings').classList.add('hidden');
-  } else {
-    show('Key saved, but the LeadDock desktop app is not running.', 'error');
   }
 };
 $('openApp').onclick = async () => {
-  try { if (state.lead) await api('/focus', { id: state.lead.id }); } catch (e) { show(e.message, 'error'); }
+  if (!state.lead) return;
+  try {
+    const r = await leaddockSend('open', { id: state.lead.id });
+    show(r.opened === 'launched' ? 'Opening LeadDock…' : 'Showing it in LeadDock.', 'ok');
+  } catch (e) { show(e.unavailable ? 'LeadDock is not reachable from the browser yet.' : e.message, 'error'); }
 };
 for (const b of document.querySelectorAll('.quick button')) {
   b.onclick = () => { $('c_followup').value = b.dataset.days ? localDate(Number(b.dataset.days)) : ''; };
@@ -258,9 +258,14 @@ for (const id of ['c_note', 'c_note_type']) {
 $('c_note').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save(); });
 
 (async function init() {
-  const stored = await chrome.storage.local.get(['pairingKey']);
-  state.key = stored.pairingKey || '';
-  $('key').value = state.key;
+  const { pairingKey } = await chrome.storage.local.get(['pairingKey']);
+  $('key').value = pairingKey || '';
   await checkConnection();
+  let delivered = '';
+  if (state.route !== 'none' && (await leaddockQueue()).length) {
+    const { sent } = await leaddockFlush();
+    if (sent) delivered = `✓ Delivered ${plural(sent, 'waiting lead')} to LeadDock.`;
+  }
+  await refreshQueueNote(delivered);
   await loadPage();
 })();
