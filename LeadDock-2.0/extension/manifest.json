@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "LeadDock \u2014 Google Maps Capture",
-  "version": "2.0.1",
-  "description": "Capture the business profile currently open in Google Maps into your local LeadDock CRM.",
+  "name": "LeadDock — Google Business Capture",
+  "version": "2.5.0",
+  "description": "Save the Google Maps / Google Search business profile you are viewing as a lead in your local LeadDock CRM.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -12,7 +12,13 @@
     "http://127.0.0.1:18765/*"
   ],
   "action": {
-    "default_title": "Capture to LeadDock",
+    "default_title": "Save to LeadDock (Alt+Shift+L)",
     "default_popup": "popup.html"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+L" },
+      "description": "Open LeadDock on the current business"
+    }
   }
 }

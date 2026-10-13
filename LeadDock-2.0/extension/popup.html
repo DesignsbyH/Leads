@@ -1,7 +1,115 @@
-<!doctype html><html><head><meta charset="utf-8"><style>
-*{box-sizing:border-box}body{font:13px system-ui,Arial;background:#101725;color:#f0f3fc;width:355px;margin:0;padding:19px}h2{font-size:19px;margin:0 0 4px}.muted{color:#a9b7ce;font-size:12px;line-height:1.5}.card{background:#192437;border:1px solid #354560;padding:14px;border-radius:12px;margin:14px 0}button{cursor:pointer;border:0;border-radius:8px;background:#607bfa;color:#fff;font-weight:700;padding:11px;width:100%;margin-top:8px}button:hover{background:#8197ff}input{width:100%;margin-top:7px;border:1px solid #485b79;border-radius:7px;background:#101725;color:white;padding:9px}.secondary{background:#34435e}label{font-size:12px;color:#c2cee1}#status{min-height:30px;font-size:12px;margin-top:12px;line-height:1.5}.okay{color:#80e7b4}.error{color:#ff9a9a}#preview{font-size:13px;white-space:pre-wrap;line-height:1.6}
-</style></head><body>
-<h2>◈ LeadDock</h2><div class="muted">Capture the open Google Maps business into your desktop CRM.</div>
-<div class="card"><label>Local app pairing key</label><input id="key" type="password" placeholder="Paste from LeadDock → Connect Edge"/><button id="saveKey" class="secondary">Save key</button></div>
-<div class="card"><div id="preview" class="muted">Open an individual business profile in Google Maps.</div><button id="capture">Capture business</button></div>
-<div id="status"></div><script src="popup.js"></script></body></html>
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body { font: 13px/1.4 "Segoe UI", system-ui, Arial, sans-serif; background: #0e1420; color: #eef2fb; width: 390px; margin: 0; padding: 14px 14px 0; }
+  h1 { font-size: 17px; margin: 0; letter-spacing: .2px; }
+  .top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .pill { margin-left: auto; font-size: 11px; padding: 3px 9px; border-radius: 99px; background: #26324a; color: #b7c4dc; white-space: nowrap; }
+  .pill.ok { background: #143a2a; color: #7fe0b0; } .pill.bad { background: #431c22; color: #ff9fa8; } .pill.warn { background: #45361a; color: #ffd27a; }
+  .icon { background: #1e2940; border: 1px solid #33425f; color: #c6d2e8; border-radius: 7px; width: 30px; height: 28px; cursor: pointer; padding: 0; font-size: 14px; }
+  .card { background: #172136; border: 1px solid #2c3a56; border-radius: 11px; padding: 11px; margin-bottom: 10px; }
+  .card h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .7px; color: #8ea0c2; margin: 0 0 8px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+  .muted { color: #9fb0cf; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+  .full { grid-column: 1 / -1; }
+  label { display: block; font-size: 11px; color: #95a6c6; }
+  input, select, textarea { width: 100%; margin-top: 2px; border: 1px solid #364766; border-radius: 7px; background: #0f1626; color: #f1f4fb; padding: 6px 8px; font: inherit; font-size: 12.5px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #6f8cff; }
+  input.missing { border-color: #6b4b25; background: #1b1710; }
+  input.missing::placeholder { color: #c49a5c; }
+  textarea { resize: vertical; min-height: 54px; }
+  button.primary, button.secondary { cursor: pointer; border: 0; border-radius: 8px; font-weight: 700; padding: 10px; width: 100%; font: inherit; font-weight: 700; }
+  button.primary { background: #5b74f5; color: #fff; } button.primary:hover { background: #7b90ff; }
+  button.primary:disabled { background: #3a4567; color: #9aa6c4; cursor: default; }
+  button.secondary { background: #2a3754; color: #dfe6f5; } button.secondary:hover { background: #34446a; }
+  button.link { background: none; border: 0; color: #8fa8ff; cursor: pointer; padding: 0; font: inherit; font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .chip { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #26324a; color: #c8d3e8; }
+  .chip.hot { background: #4a2a12; color: #ffb36b; } .chip.good { background: #143a2a; color: #7fe0b0; } .chip.bad { background: #431c22; color: #ff9fa8; }
+  .banner { border-radius: 9px; padding: 9px 11px; margin-bottom: 10px; font-size: 12.5px; }
+  .banner.existing { background: #1d2c4f; border: 1px solid #3a5598; }
+  .banner.new { background: #16301f; border: 1px solid #2c6a43; }
+  .banner b { color: #fff; }
+  .row { display: flex; gap: 6px; align-items: end; }
+  .quick { display: flex; gap: 4px; margin-top: 4px; }
+  .quick button { flex: 1; background: #22304b; color: #c7d3ea; border: 1px solid #33425f; border-radius: 6px; padding: 3px 0; font-size: 11px; cursor: pointer; }
+  .quick button:hover { background: #2d3d5e; }
+  .activity { list-style: none; margin: 0; padding: 0; max-height: 120px; overflow: auto; }
+  .activity li { padding: 5px 0; border-top: 1px solid #253350; font-size: 12px; }
+  .activity li:first-child { border-top: 0; }
+  .activity .when { color: #8193b5; font-size: 11px; }
+  .activity .what { font-weight: 700; color: #9fb7ff; }
+  details summary { cursor: pointer; color: #95a6c6; font-size: 11px; margin-top: 6px; }
+  .footer { position: sticky; bottom: 0; background: linear-gradient(transparent, #0e1420 22%); padding: 14px 0 12px; }
+  #status { min-height: 18px; font-size: 12px; margin-top: 7px; white-space: pre-wrap; }
+  #status.ok { color: #7fe0b0; } #status.error { color: #ff9fa8; }
+  .hidden { display: none !important; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>◈ LeadDock</h1>
+    <span id="conn" class="pill">Checking…</span>
+    <button id="toggleSettings" class="icon" title="Pairing key">⚙</button>
+  </div>
+
+  <div id="settings" class="card hidden">
+    <h2>Connect to the desktop app</h2>
+    <div class="muted">In LeadDock click <b>Connect browser</b>, copy the pairing key and paste it here.</div>
+    <input id="key" type="password" placeholder="Paste pairing key" autocomplete="off">
+    <div class="split"><button id="saveKey" class="secondary">Save key</button><button id="showKey" class="secondary">Show</button></div>
+  </div>
+
+  <div id="message" class="card muted">Reading the open business profile…</div>
+
+  <div id="main" class="hidden">
+    <div id="banner" class="banner hidden"></div>
+
+    <div class="card">
+      <h2><span>Business details</span><button id="rescan" class="link" title="Read the page again">↻ Re-read page</button></h2>
+      <div class="grid">
+        <div class="full"><label>Business name<input id="f_name"></label></div>
+        <div><label>Category<input id="f_category"></label></div>
+        <div><label>Phone<input id="f_phone"></label></div>
+        <div class="full"><label>Website<input id="f_website"></label></div>
+        <div class="full"><label>Address<input id="f_address"></label></div>
+        <div><label>Email<input id="f_email" placeholder="Filled by website scan"></label></div>
+        <div><label>Contact person<input id="f_contact_name" placeholder="Owner / manager"></label></div>
+        <div><label>Google rating<input id="f_rating"></label></div>
+        <div><label>Reviews<input id="f_review_count"></label></div>
+      </div>
+      <details id="hoursBox"><summary>Hours</summary><textarea id="f_hours" rows="4"></textarea></details>
+      <div id="chips" class="chips"></div>
+      <div id="limited" class="muted hidden" style="margin-top:6px">Google is showing a limited (signed-out) view, so the review count or full hours may be missing. Sign in to Google in this browser for complete details.</div>
+    </div>
+
+    <div class="card">
+      <h2>Sales pipeline</h2>
+      <div class="grid">
+        <div><label>Stage<select id="c_status"></select></label></div>
+        <div><label>Priority<select id="c_priority"></select></label></div>
+        <div class="full"><label>Follow-up date<input id="c_followup" type="date"></label>
+          <div class="quick"><button data-days="1">Tomorrow</button><button data-days="3">+3 days</button><button data-days="7">+1 week</button><button data-days="14">+2 weeks</button><button data-days="">Clear</button></div>
+        </div>
+        <div><label>Log<select id="c_note_type"></select></label></div>
+        <div class="full"><label>Note<textarea id="c_note" placeholder="e.g. Site isn't mobile friendly — pitch redesign. Owner is Mike."></textarea></label></div>
+      </div>
+    </div>
+
+    <div id="activityCard" class="card hidden">
+      <h2><span>Recent activity</span><button id="openApp" class="link">Open in LeadDock ↗</button></h2>
+      <ul id="activity" class="activity"></ul>
+    </div>
+  </div>
+
+  <div class="footer">
+    <button id="save" class="primary" disabled>Save lead</button>
+    <div id="status"></div>
+  </div>
+<script src="popup.js"></script>
+</body>
+</html>
